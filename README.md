@@ -157,6 +157,8 @@ opencode serve         隔离实例（独立 XDG + 受限 agent 配置）
   - `FAIL ... 403` / `RegionError` / "not available in your country" → 上游**地区封锁**，换模型或换出口网络。
   - `FAIL ... 401` / `unauthorized` → OpenCode 没有有效凭据，先在 OpenCode 里登录（`opencode auth list` 查看）。
   - 只有部分失败（例如某些推理型模型超时）→ 把 `--timeout` 调大再试。
+- **报错说上游限流（`Detect Abuse Traffic` / `429`）**：免费网关对突发流量会临时拒绝。v1.0.6 起插件会退避 4 秒自动重试一次；仍然失败说明调用过于频繁，等一会儿再用。
+- **报错 "returned no usable assistant message within 120 s"**：上游 120 秒内既没给文本也没报错，通常是排队/限流或模型极慢，错误信息会附带上游原因；若已收到部分文本，插件保留这部分内容而不是整轮丢弃。
 - **启动超时**：确认 `opencode serve` 能手工启动（`opencode serve --hostname 127.0.0.1 --port 4096`），并检查 `~/.dsh/dsh-connect-opencode-v2/startup-trace.log`。
 - **自定义 provider 没有出现**：插件会把 `~/.config/opencode/opencode.json(c)` 与 `~/.local/share/opencode/auth.json` 复制进隔离目录，请确认这些文件存在；v2 下还会用 `/api/provider`（活跃 provider）与目录取交集，没有活跃 provider 时不会注册任何模型。
 - **端口冲突**：隔离 serve 使用系统分配的随机端口，通常不会冲突；若被防火墙拦截，请允许 `opencode` 监听回环地址。
