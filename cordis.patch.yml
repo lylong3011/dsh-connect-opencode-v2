@@ -1,0 +1,5 @@
+# Register the OpenCode provider bundle without changing the profile's default model.
+# This plugin spawns its own isolated `opencode serve`; no separate OAuth flow is started.
+- insert:
+    - id: dsh-connect-opencode-v2
+      name: dsh-connect-opencode-v2
