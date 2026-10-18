@@ -73,6 +73,9 @@ node bin/cli.js doctor
 # 列出发现的免费模型（会真实启动一次隔离 serve）
 node bin/cli.js models
 
+# 逐个模型真实发一次请求，报告哪些可用、失败原因是什么
+node bin/cli.js probe --timeout 30000
+
 # 端到端跑一轮对话
 node bin/cli.js chat "Reply with exactly: pong" --model opencode/big-pickle
 ```
@@ -145,8 +148,17 @@ opencode serve         隔离实例（独立 XDG + 受限 agent 配置）
 ## 疑难排查
 
 - **模型列表为空**：先跑 `node bin/cli.js doctor` 确认能找到 `opencode`；再跑 `models` 确认你的 OpenCode 里确实存在成本为 0 的模型。
+- **模型列表出现，但每个都不可用**：这是"目录里有、但调不通"，与插件无关，属于账号或网络问题。直接跑：
+  ```powershell
+  node bin/cli.js probe --timeout 30000
+  ```
+  它会逐个模型真实发一次请求，逐个报成功/失败原因。常见结论：
+  - 全部 `FAIL ... fetch failed` / 超时 → 这台机器**连不上上游**（需要代理，或被网络策略拦截）；模型列表来自本地目录快照，所以"能列出来"不代表"能调用"。
+  - `FAIL ... 403` / `RegionError` / "not available in your country" → 上游**地区封锁**，换模型或换出口网络。
+  - `FAIL ... 401` / `unauthorized` → OpenCode 没有有效凭据，先在 OpenCode 里登录（`opencode auth list` 查看）。
+  - 只有部分失败（例如某些推理型模型超时）→ 把 `--timeout` 调大再试。
 - **启动超时**：确认 `opencode serve` 能手工启动（`opencode serve --hostname 127.0.0.1 --port 4096`），并检查 `~/.dsh/dsh-connect-opencode-v2/startup-trace.log`。
-- **自定义 provider 没有出现**：插件会把 `~/.config/opencode/opencode.json(c)` 与 `~/.local/share/opencode/auth.json` 复制进隔离目录，请确认这些文件存在。
+- **自定义 provider 没有出现**：插件会把 `~/.config/opencode/opencode.json(c)` 与 `~/.local/share/opencode/auth.json` 复制进隔离目录，请确认这些文件存在；v2 下还会用 `/api/provider`（活跃 provider）与目录取交集，没有活跃 provider 时不会注册任何模型。
 - **端口冲突**：隔离 serve 使用系统分配的随机端口，通常不会冲突；若被防火墙拦截，请允许 `opencode` 监听回环地址。
 
 ## 日志

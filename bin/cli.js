@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // dsh-connect-opencode CLI — run OUTSIDE the DSH sandbox to validate against your real OpenCode.
-// Subcommands: doctor | models | chat "<prompt>" [--model <id>]
+// Subcommands: doctor | models | probe | chat "<prompt>" [--model <id>]
 import { findRuntime, startBackend } from "../lib/backend.js";
 import { freeModels, modelEntry } from "../lib/catalog.js";
 import { createShim } from "../lib/shim.js";
+import { prepare, decode } from "../lib/protocol.js";
 import { homedir } from "node:os";
 import path from "node:path";
 import fs from "node:fs";
@@ -38,6 +39,46 @@ else if (cmd === "models") {
     for (const m of models) console.log(`  ${m.id}  ctx=${m.contextWindow} out=${m.maxTokens} img=${m.inputModalities.includes("image")} tool=${!m.chatOnly}`);
   });
 }
+else if (cmd === "probe") {
+  // Definitive "is this model actually usable here?" check: one tiny real request per model.
+  // This is what to run when DSH shows a pile of models that all fail.
+  const limitMs = Number(arg("--timeout") ?? 25000);
+  await withBackend(async ({ backend }) => {
+    const models = freeModels(await backend.providers()).map(modelEntry);
+    if (!models.length) {
+      console.log("No free (cost=0) models listed. Check that OpenCode has an active provider:");
+      console.log("  /api/provider should list at least one provider.");
+      return;
+    }
+    console.log(`\nprobing ${models.length} model(s), ${limitMs} ms timeout each...\n`);
+    const results = [];
+    for (const m of models) {
+      const started = Date.now();
+      try {
+        const request = prepare({ model: m.id, messages: [{ role: "user", content: "ping" }] }, models);
+        const { text } = await backend.complete(request, AbortSignal.timeout(limitMs));
+        const message = request.chatOnly ? { content: text } : decode(text, request);
+        const ms = Date.now() - started;
+        const answer = (message.content ?? "").replace(/\s+/g, " ").slice(0, 40);
+        results.push({ id: m.id, ok: true, ms });
+        console.log(`  OK    ${m.id.padEnd(46)} ${String(ms).padStart(6)} ms  ${JSON.stringify(answer)}`);
+      } catch (e) {
+        const ms = Date.now() - started;
+        results.push({ id: m.id, ok: false, ms, error: e.message });
+        console.log(`  FAIL  ${m.id.padEnd(46)} ${String(ms).padStart(6)} ms  ${String(e.message).replace(/\s+/g, " ").slice(0, 110)}`);
+      }
+    }
+    const ok = results.filter((r) => r.ok);
+    console.log(`\n${ok.length}/${results.length} model(s) usable here.`);
+    if (!ok.length) {
+      console.log("\nAll models failed. Typical causes:");
+      console.log("  - this network/region is blocked by the upstream (look for 403 / RegionError)");
+      console.log("  - OpenCode has no valid credentials (run `opencode auth list`)");
+      console.log("  - the free models in your catalog are not offered to your account");
+    }
+    process.exit(ok.length ? 0 : 6);
+  });
+}
 else if (cmd === "chat") {
   const prompt = rest.find((r) => !r.startsWith("--")) ?? "Reply with exactly: pong";
   const modelId = arg("--model");
@@ -62,5 +103,9 @@ else if (cmd === "chat") {
   });
 }
 else {
-  console.log("usage: dsh-connect-opencode [doctor|models|chat] [args]");
+  console.log("usage: dsh-connect-opencode [doctor|models|probe|chat] [args]");
+  console.log("  doctor                 locate the opencode executable");
+  console.log("  models                 list free (cost=0) models in the isolated serve");
+  console.log("  probe [--timeout ms]   really call each listed model and report which work");
+  console.log('  chat "prompt" [--model id]  run one turn end to end');
 }
