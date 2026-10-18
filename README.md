@@ -14,8 +14,10 @@
   - **v2**（OpenCode Desktop / CLI ≥ 2.x）：使用 `/api/model`、`/api/session`、`/api/session/{id}/prompt` 等接口；
   - **v1**（`opencode serve` ≤ 1.x）：使用 `/provider`、`/session`、`/session/{id}/message` 等接口。
 - 扫描目录中**全部成本为 0** 的免费模型，注册为 DSH provider `opencode-local`（显示名 `OpenCode Local`），模型 id 形如 `opencode-local/opencode/deepseek-v4.1-flash-free`。
+- **真流式输出**：订阅 OpenCode 的 SSE 事件流（`session.text.delta`，约每 100 ms 一段），边生成边把正文推给 DSH。首字延迟从"整段生成完"降到"模型开始输出"（实测长回答 6.6 s 见字 / 13.0 s 收全）。带工具的桥接轮次会增量提取 JSON 信封中的 `content` 字段，工具调用在末尾一次性下发。
 - 会话内的**原生工具全部拒绝**（`permission: deny`）：模型只负责推理，工具的真正执行由 DSH 侧完成。
 - 定时刷新模型目录（默认 15 分钟），刷新期间不会打断正在进行的对话。
+- serve 意外退出时自动冷重启并重试当前轮次（自愈），不必手动重启 DSH。
 
 ## 环境要求
 
@@ -112,11 +114,27 @@ lib/backend.js         自动识别 v1 / v2 的 OpenCode HTTP 客户端
 opencode serve         隔离实例（独立 XDG + 受限 agent 配置）
 ```
 
-- `lib/backend.js` — 定位可执行文件、启动隔离 serve、探测 API 版本、读取模型目录、执行一轮对话。
+- `lib/backend.js` — 定位可执行文件、启动隔离 serve、探测 API 版本、读取模型目录、执行一轮对话（含事件流订阅）。
 - `lib/catalog.js` — 从 provider 目录中筛出「全零成本」模型并映射为 DSH 模型条目。
-- `lib/shim.js` — 把 DSH 的 OpenAI 请求桥接到 `backend.complete()`。
-- `lib/protocol.js` — `{content, calls}` 结构化信封的编解码。
+- `lib/shim.js` — 把 DSH 的 OpenAI 请求桥接到 `backend.complete()`，流式请求逐块下发。
+- `lib/protocol.js` — `{content, calls}` 结构化信封的编解码，以及流式增量过滤（`createDeltaFilter`）。
 - `lib/index.js` — 插件入口：注册 adapter、provider 目录与模型发现。
+
+### 一轮对话的延迟构成
+
+| 环节 | 实测 |
+| --- | --- |
+| serve 冷启动（每次 DSH 启动一次） | ≈ 1.3 s |
+| 模型目录扫描 | ≈ 10 ms |
+| 本地管道（建会话/设模型/设 agent/受理 prompt/删会话） | ≈ 50 ms |
+| 上游排队到首个 token | 1–3.5 s（免费模型差异大） |
+| 生成正文 | 视长度而定（约 20–40 token/s） |
+
+本地这两跳可忽略不计，**耗时几乎全在上游**。因此优化的关键是"不要让用户等整段生成"：
+
+- 正文通过 `/api/event` 的 `session.text.delta` 实时转发（OpenAI SSE chunk），首字即出现；
+- 权威结果仍由 `GET /api/session/{id}/message` 轮询获得（150 ms 间隔），用于取完整文本、token 用量与上游错误；
+- 事件流按规范是 "volatile by contract"（慢消费者会溢出断流），因此轮询始终保留，作为流不可用时的兜底。
 
 ### v1 / v2 探测规则
 
