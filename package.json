@@ -2,7 +2,7 @@
   "name": "dsh-connect-opencode-v2",
   "displayName": "DSH Connect OpenCode (v2 native)",
   "description": "Expose the free models of your local OpenCode install to the DeepSeek Harness model picker. Native OpenCode v2 (/api/*) support with automatic v1 compatibility; no wrapper executable and no v1-to-v2 translation shim required.",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "author": "lylong3011",
   "license": "MIT",
   "keywords": ["dsh-plugin", "deepseek-harness", "opencode", "model-provider", "free"],
