@@ -1,8 +1,8 @@
 {
   "name": "dsh-connect-opencode-v2",
   "displayName": "DSH Connect OpenCode (v2 native)",
-  "description": "把本机 OpenCode 的免费模型接入 DeepSeek Harness 模型选择器；原生支持 OpenCode v2（/api/*）并自动兼容 v1，无需包装器或转译层。",
-  "version": "1.0.0",
+  "description": "鎶婃湰鏈?OpenCode 鐨勫厤璐规ā鍨嬫帴鍏?DeepSeek Harness 妯″瀷閫夋嫨鍣紱鍘熺敓鏀寔 OpenCode v2锛?api/*锛夊苟鑷姩鍏煎 v1锛屾棤闇€鍖呰鍣ㄦ垨杞瘧灞傘€?,
+  "version": "1.0.1",
   "author": "lylong3011",
   "license": "MIT",
   "keywords": ["dsh-plugin", "deepseek-harness", "opencode", "model-provider", "free"],
